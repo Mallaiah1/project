@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editable Portfolio CRUD</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+body { margin:0; font-family:'Roboto', sans-serif; background:#f4f5f7; }
+nav { padding:15px 40px; display:flex; justify-content:space-between; align-items:center; background:#ffffff; box-shadow:0 2px 10px rgba(0,0,0,0.08); position:sticky; top:0; z-index:1000; }
+nav a { text-decoration:none; margin-left:20px; color:#333; font-weight:500; transition:0.2s; }
+nav a:hover { color:#4a90e2; }
+nav b { font-size:20px; }
+
+section { padding:60px 20px; }
+.card { background:#fff; padding:30px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.08); max-width:900px; margin:30px auto; transition: transform 0.2s, box-shadow 0.2s; }
+.card:hover { transform: translateY(-3px); box-shadow:0 8px 25px rgba(0,0,0,0.12); }
+.editable[contenteditable="true"]:focus { outline: 2px dashed #4a90e2; }
+
+.toolbar { position: fixed; top:120px; left:20px; background:#fff; padding:15px 20px; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,0.1); display:none; width:250px; z-index:9999; cursor:grab; }
+.toolbar select, .toolbar input[type="color"], .toolbar button {
+  border-radius:8px; border:1px solid #ddd; background:#f9f9f9;
+  padding:8px 10px; margin-bottom:8px; width:100%; font-size:13px; cursor:pointer;
+}
+.toolbar label { font-weight:bold; font-size:12px; margin-top:6px; display:block; }
+
+.edit-btn { position:fixed; bottom:20px; right:20px; padding:12px 22px; border-radius:30px; background:#4a90e2; color:white; border:none; font-weight:bold; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+</style>
+</head>
+
+<body>
+
+<nav>
+  <b class="editable" contenteditable="false">My Portfolio</b>
+  <div>
+    <a href="#">Home</a>
+    <a href="#">About</a>
+    <a href="#">Skills</a>
+    <a href="#">Contact</a>
+  </div>
+</nav>
+
+<div class="toolbar" id="toolbar">
+  <select onchange="changeBlock(this.value)">
+    <option value="">Text / Heading</option>
+    <option value="p">Normal Text</option>
+    <option value="h1">Heading 1</option>
+    <option value="h2">Heading 2</option>
+    <option value="h3">Heading 3</option>
+  </select>
+
+  <select onchange="formatText(this.value)">
+    <option value="">Formatting</option>
+    <option value="bold">Bold</option>
+    <option value="italic">Italic</option>
+    <option value="underline">Underline</option>
+    <option value="subscript">Subscript</option>
+    <option value="superscript">Superscript</option>
+    <option value="mark">Highlight</option>
+  </select>
+
+  <label>Text Color</label>
+  <input type="color" onchange="cmd('foreColor', this.value)">
+
+  <select onchange="listFormat(this.value)">
+    <option value="">Lists</option>
+    <option value="ul">Unordered List</option>
+    <option value="ol">Ordered List</option>
+  </select>
+
+  <button onclick="addSection()">➕ Add Section</button>
+  <button onclick="editSection()">✏️ Edit Section</button>
+  <button onclick="deleteSection()">🗑 Delete Section</button>
+  <button onclick="addBoxToSection()">🟦 Add Box</button>
+  <button onclick="saveToSheets()">💾 Save</button>
+</div>
+
+<div id="content"></div>
+
+<button class="edit-btn" id="lockBtn" onclick="toggleEdit()">Unlock Edit 🔓</button>
+
+<script>
+const PASSWORD = "123";
+const SHEET_URL = "https://script.google.com/macros/s/AKfycbwGIrcn-FiMRQvIM7CrDjRNALB33qdu4yqUsZYy3UGQMQiWI1puyZ6IVDq4l0tZ13js/exec";
+
+let editEnabled=false, activeElement=null, activeSection=null;
+const toolbar=document.getElementById("toolbar");
+const lockBtn=document.getElementById("lockBtn");
+const content=document.getElementById("content");
+
+/* ---------- LOAD ---------- */
+async function loadFromSheets(){
+  try{
+    const res = await fetch(SHEET_URL);
+    const data = await res.json();
+    content.innerHTML="";
+
+    if(!data.length){
+      addSection();
+      return;
+    }
+
+    data.sort((a,b)=>a.order-b.order).forEach(sec=>{
+      const section=document.createElement("section");
+      section.dataset.id=sec.id;
+      section.innerHTML=`
+        <div class="card">
+          <h2 class="editable" contenteditable="false">${sec.title}</h2>
+          <p class="editable" contenteditable="false">${sec.content}</p>
+        </div>`;
+      content.appendChild(section);
+    });
+  }catch(e){
+    console.error(e);
+  }
+}
+window.onload = loadFromSheets;
+
+/* ---------- LOCK ---------- */
+document.addEventListener("click", e=>{
+  if(e.target.classList.contains("editable") && editEnabled){
+    activeElement=e.target;
+    activeSection=e.target.closest("section");
+  }
+});
+
+function toggleEdit(){
+  if(!editEnabled){
+    if(prompt("Enter password")!==PASSWORD) return alert("Wrong password");
+    enableEdit();
+  } else disableEdit();
+}
+
+function enableEdit(){
+  editEnabled=true;
+  lockBtn.innerText="Lock Edit 🔒";
+  toolbar.style.display="block";
+  document.querySelectorAll(".editable").forEach(el=>el.contentEditable="true");
+  document.querySelectorAll("section").forEach(sec=>sec.draggable=true);
+}
+
+function disableEdit(){
+  editEnabled=false;
+  lockBtn.innerText="Unlock Edit 🔓";
+  toolbar.style.display="none";
+  document.querySelectorAll(".editable").forEach(el=>el.contentEditable="false");
+  document.querySelectorAll("section").forEach(sec=>sec.draggable=false);
+}
+
+/* ---------- SECTIONS ---------- */
+function addSection(){
+  if(!editEnabled) return;
+  const sec=document.createElement("section");
+  sec.innerHTML=`
+    <div class="card">
+      <h2 class="editable" contenteditable="true">New Section</h2>
+      <p class="editable" contenteditable="true">Edit content</p>
+    </div>`;
+  content.appendChild(sec);
+}
+
+function editSection(){
+  if(activeSection) activeSection.querySelector(".editable").focus();
+}
+
+function deleteSection(){
+  if(activeSection && confirm("Delete section?")) activeSection.remove();
+}
+
+function addBoxToSection(){
+  if(!activeSection) return;
+  const p=document.createElement("p");
+  p.className="editable";
+  p.contentEditable="true";
+  p.innerText="New Box Content";
+  activeSection.querySelector(".card").appendChild(p);
+  p.focus();
+}
+
+/* ---------- DRAG ---------- */
+let dragged=null;
+document.addEventListener("dragstart", e=>{
+  if(e.target.tagName==="SECTION" && editEnabled) dragged=e.target;
+});
+document.addEventListener("dragover", e=>e.preventDefault());
+document.addEventListener("drop", e=>{
+  if(dragged && e.target.tagName==="SECTION"){
+    content.insertBefore(dragged, e.target.nextSibling);
+  }
+});
+
+/* ---------- TEXT ---------- */
+function changeBlock(tag){
+  if(!tag || !activeElement) return;
+  const el=document.createElement(tag);
+  el.className="editable";
+  el.contentEditable="true";
+  el.innerHTML=activeElement.innerHTML;
+  activeElement.replaceWith(el);
+  activeElement=el;
+}
+function formatText(type){
+  if(type==="mark") document.execCommand("hiliteColor",false,"yellow");
+  else document.execCommand(type,false,null);
+}
+function listFormat(type){
+  if(type==="ul") document.execCommand("insertUnorderedList");
+  if(type==="ol") document.execCommand("insertOrderedList");
+}
+function cmd(c,v){ document.execCommand(c,false,v); }
+
+/* ---------- SAVE ---------- */
+async function saveToSheets(){
+  if(!editEnabled) return;
+
+  const sections=[...document.querySelectorAll("section")].map((sec,i)=>{
+    const edits=sec.querySelectorAll(".editable");
+    return {
+      id: sec.dataset.id || crypto.randomUUID(),
+      title: edits[0]?.innerHTML || "",
+      content: edits[1]?.innerHTML || ""
+    };
+  });
+
+  try{
+    const res=await fetch(SHEET_URL,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ sections })
+    });
+    const r=await res.json();
+    if(r.status==="success") alert("Saved to Google Sheets!");
+  }catch(e){
+    console.error(e);
+    alert("Failed to save to Google Sheets.");
+  }
+}
+</script>
+
+</body>
+</html>
